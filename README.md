@@ -6,12 +6,18 @@ So any further information about the requirements of the environment and the way
 
 In this set of experiments I try to interpret the following models.
 
-Cait source --> https://github.com/facebookresearch/deit model:cait_s24_384
+Cait source --> https://github.com/facebookresearch/deit model:cait_s24_384 
+
 Deit source --> https://github.com/facebookresearch/deit model:deit_base_patch16_224
+
 Dino_res source --> https://github.com/facebookresearch/dino backbone:dino_resnet50   /classifier weights:dino_resnet50_linearweights.pth 
+
 Dino_xcit source --> https://github.com/facebookresearch/dino backbone:dino_xcit_small_12_p16    /classifier weights:dino_xcit_small_12_p16_linearweights.pth
+
 Res50 source --> torchvision.models.resnet.resnet50
+
 SwinT source --> https://fastai.github.io/timmdocs/ model:swin_base_patch4_window7_224
+
 Xcit source --> https://github.com/facebookresearch/xcit model weights:xcit_small_12_p16_224.pth
 
 In order to execute the Xcit_main.py one has to download first the xcit_small_12_p16_224.pth from https://github.com/facebookresearch/xcit and simply put the .pth file to the pretrained_weights folder!
