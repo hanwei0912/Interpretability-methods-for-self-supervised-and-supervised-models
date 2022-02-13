@@ -16,7 +16,7 @@ from pytorch_grad_cam import GuidedBackpropReLUModel
 from pytorch_grad_cam.utils.image import show_cam_on_image, \
     deprocess_image, \
     preprocess_image
-
+from eval_metric.metrics_classification import *
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -89,10 +89,11 @@ if __name__ == '__main__':
     # You can also try selecting all layers of a certain type, with e.g:
     # from pytorch_grad_cam.utils.find_layers import find_layer_types_recursive
     # find_layer_types_recursive(model, [torch.nn.ReLU])
-    target_layers = [model.layer4[-1]]
+    target_layers = [model.layer4[-1].conv3] # or model.layer4[-1]. For ScoreCam for target layer model.layer4[-1] we don't observe meaningful activations maps
+
 
     rgb_img = cv2.imread(args.image_path, 1)[:, :, ::-1]
-    #rgb_img = cv2.resize(rgb_img, (224, 224)) #
+    rgb_img = cv2.resize(rgb_img, (224, 224)) #
     rgb_img = np.float32(rgb_img) / 255
     input_tensor = preprocess_image(rgb_img,
                                     mean=[0.485, 0.456, 0.406],
@@ -135,6 +136,49 @@ if __name__ == '__main__':
     cam_mask = cv2.merge([grayscale_cam, grayscale_cam, grayscale_cam])
     cam_gb = deprocess_image(cam_mask * gb)
     gb = deprocess_image(gb)
+
+    masked_tensor = preprocess_image(cam_image,
+                                    mean=[0.485, 0.456, 0.406],
+                                    std=[0.229, 0.224, 0.225])
+    if args.use_cuda:
+        device = 'cuda'
+    else:
+        device = 'cpu'
+    
+    # Γενικότερα για target category = None έχoυν πρόβλημα οι παρακάτω συναρτήσεις. Να το δώ
+    outputs, outputs_mask = return_probs(model, input_tensor, masked_tensor, device)
+    print("For unmasked input, the model predicted", outputs[1][0][0].item(), "class with probability", outputs[0][0][0].item())
+    print("For masked input, the model predicted", outputs_mask[1][0][0].item(), "class with probability", outputs_mask[0][0][0].item())
+    prob1, prob2 = return_probs2(model, input_tensor, torch.tensor(target_category), masked_tensor, device)
+    print("The probabilities for target class", target_category,"and for unmasked input is", prob1, ",while for masked input", prob2)
+    avg_drop, avg_inc = averageDropIncrease(model, input_tensor, torch.tensor(target_category), masked_tensor, device)
+    print("The AVERAGE DROP is", avg_drop)
+    print("Is score for masked input higher?", avg_inc)
+    
+    #Starting deletion and insertion game ONLY FOR CPU
+    klen = 11
+    ksig = 5
+    kern = gkern(klen, ksig)
+    blur = lambda x: nn.functional.conv2d(x, kern, padding=klen//2) # Function that blurs input image  
+    # the two previous lines will be used for insertion mode
+    insertion = CausalMetric(model, 'ins', 224, substrate_fn=blur)
+    deletion = CausalMetric(model, 'del', 224, substrate_fn=torch.zeros_like)
+
+    del_scores = deletion.single_run(input_tensor, cam_image, verbose=1, save_to = "plots/del224.png")
+    
+    in_scores = insertion.single_run(input_tensor, cam_image, verbose=1, save_to = "plots/ins224.png")
+    
+    del_auc = auc(del_scores) # Calculation of AUC scores
+    in_auc = auc(in_scores)
+    print("The AUC score for deletion is", '%.3f' % del_auc,"and for insertion", '%.3f' % in_auc)
+    
+    #Implementation of Energy-based Pointing Game proposed in Score-CAM
+    #bbox = [32, 71, 177, 197] # bbox for bald_eagle 224*224
+    #bbox = [30, 42, 194, 172] # bbox for tiger_shark 224*224
+    bbox = [5, 2, 217, 222] # bbox for Norwich_terrier 224*224
+
+    proportion = energy_point_game2(bbox, torch.tensor(grayscale_cam))
+    print("The PROPORTION after energy point game is", '%.3f' % proportion.item())
 
     cv2.imwrite(f'{args.method}_cam.jpg', cam_image)
     cv2.imwrite(f'{args.method}_gb.jpg', gb)
