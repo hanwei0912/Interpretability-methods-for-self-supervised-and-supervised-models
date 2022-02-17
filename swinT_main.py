@@ -126,10 +126,19 @@ if __name__ == '__main__':
     masked_tensor = preprocess_image(cam_image,
                                     mean=[0.485, 0.456, 0.406],
                                     std=[0.229, 0.224, 0.225])
+    #Parameters needed for the evaluation metrics
+    klen = 11
+    ksig = 5
+    kern = gkern(klen, ksig)
+     
     if args.use_cuda:
         device = 'cuda'
+        input_tensor=input_tensor.cuda()
+        blur = lambda x: nn.functional.conv2d(x.to("cpu"), kern, padding=klen//2).to("cuda") # Function that blurs input image 
     else:
         device = 'cpu'
+        blur = lambda x: nn.functional.conv2d(x, kern, padding=klen//2) # Function that blurs input image
+    
     
     # Γενικότερα για target category = None έχoυν πρόβλημα οι παρακάτω συναρτήσεις. Να το δώ
     outputs, outputs_mask = return_probs(model, input_tensor, masked_tensor, device)
@@ -141,12 +150,8 @@ if __name__ == '__main__':
     print("The AVERAGE DROP is", avg_drop)
     print("Is score for masked input higher?", avg_inc)
     
-    #Starting deletion and insertion game ONLY FOR CPU
-    klen = 11
-    ksig = 5
-    kern = gkern(klen, ksig)
-    blur = lambda x: nn.functional.conv2d(x, kern, padding=klen//2) # Function that blurs input image  
-    # the two previous lines will be used for insertion mode
+    #Starting deletion and insertion game 
+    
     insertion = CausalMetric(model, 'ins', 224, substrate_fn=blur)
     deletion = CausalMetric(model, 'del', 224, substrate_fn=torch.zeros_like)
 

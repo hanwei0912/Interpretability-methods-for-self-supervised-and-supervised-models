@@ -6,7 +6,7 @@ So any further information about the requirements of the environment and the way
 
 In this set of experiments I try to interpret the following models.
 
-Cait source --> https://github.com/facebookresearch/deit model:cait_s24_384 
+Cait source --> https://github.com/facebookresearch/deit model:cait_s24_224 
 
 Deit source --> https://github.com/facebookresearch/deit model:deit_base_patch16_224
 

@@ -131,8 +131,8 @@ def return_probs2(model, images, labels, masked_images, device): #  # returns th
     return Y, O
 
 n_classes = 1000
-HW = 224*224 # for all methods except Cait_main.py. If you use Cait_main.py simply comment this line and uncomment the next
-#HW = 384*384 # for Cait_main.py
+HW = 224*224 # for all methods 
+
 
 # Plots image from tensor
 def tensor_imshow(inp, title=None, **kwargs):

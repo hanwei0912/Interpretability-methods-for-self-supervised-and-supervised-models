@@ -1,4 +1,4 @@
-# This script runned for me only in cpu cause I get out of memory error!
+
 import argparse
 import cv2
 import numpy as np
@@ -54,7 +54,7 @@ def get_args():
     return args
 
 
-def reshape_transform(tensor, height=24, width=24): # 
+def reshape_transform(tensor, height=14, width=14): 
     result = tensor[:, 1:, :].reshape(tensor.size(0),
                                       height, width, tensor.size(2))
 
@@ -86,7 +86,7 @@ if __name__ == '__main__':
     if args.method not in list(methods.keys()):
         raise Exception(f"method should be one of {list(methods.keys())}")
 
-    model = timm.create_model('cait_s24_384', pretrained=True) # loading the model
+    model = timm.create_model('cait_s24_224', pretrained=True) # loading the model
                           
     model.eval()
 
@@ -104,7 +104,7 @@ if __name__ == '__main__':
                                reshape_transform=reshape_transform)
 
     rgb_img = cv2.imread(args.image_path, 1)[:, :, ::-1]
-    rgb_img = cv2.resize(rgb_img, (384, 384)) # 
+    rgb_img = cv2.resize(rgb_img, (224, 224)) # 
     rgb_img = np.float32(rgb_img) / 255
     input_tensor = preprocess_image(rgb_img, mean=[0.5, 0.5, 0.5],
                                     std=[0.5, 0.5, 0.5])
@@ -134,10 +134,18 @@ if __name__ == '__main__':
     masked_tensor = preprocess_image(cam_image,
                                     mean=[0.485, 0.456, 0.406],
                                     std=[0.229, 0.224, 0.225])
+    #Parameters needed for the evaluation metrics
+    klen = 11
+    ksig = 5
+    kern = gkern(klen, ksig)
+     
     if args.use_cuda:
         device = 'cuda'
+        input_tensor=input_tensor.cuda()
+        blur = lambda x: nn.functional.conv2d(x.to("cpu"), kern, padding=klen//2).to("cuda") # Function that blurs input image 
     else:
         device = 'cpu'
+        blur = lambda x: nn.functional.conv2d(x, kern, padding=klen//2) # Function that blurs input image
     
     # Γενικότερα για target category = None έχoυν πρόβλημα οι παρακάτω συναρτήσεις. Να το δώ
     outputs, outputs_mask = return_probs(model, input_tensor, masked_tensor, device)
@@ -149,14 +157,10 @@ if __name__ == '__main__':
     print("The AVERAGE DROP is", avg_drop)
     print("Is score for masked input higher?", avg_inc)
     
-    #Starting deletion and insertion game ONLY FOR CPU
-    klen = 11
-    ksig = 5
-    kern = gkern(klen, ksig)
-    blur = lambda x: nn.functional.conv2d(x, kern, padding=klen//2) # Function that blurs input image  
-    # the two previous lines will be used for insertion mode
-    insertion = CausalMetric(model, 'ins', 384, substrate_fn=blur)
-    deletion = CausalMetric(model, 'del', 384, substrate_fn=torch.zeros_like)
+    #Starting deletion and insertion game 
+   
+    insertion = CausalMetric(model, 'ins', 224, substrate_fn=blur)
+    deletion = CausalMetric(model, 'del', 224, substrate_fn=torch.zeros_like)
 
     del_scores = deletion.single_run(input_tensor, cam_image, verbose=1, save_to = "plots/del224.png")
     
@@ -167,9 +171,9 @@ if __name__ == '__main__':
     print("The AUC score for deletion is", '%.3f' % del_auc,"and for insertion", '%.3f' % in_auc)
     
     #Implementation of Energy-based Pointing Game proposed in Score-CAM
-    bbox = [55, 125, 286, 341] # bbox for bald_eagle 384*384
-    #bbox = [48, 73, 330, 300] # bbox for tiger_shark 384*384
-    #bbox = [6, 5, 373, 382] # bbox for Norwich_terrier 384*384
+    bbox = [32, 71, 177, 197] # bbox for bald_eagle 224*224
+    #bbox = [30, 42, 194, 172] # bbox for tiger_shark 224*224
+    #bbox = [5, 2, 217, 222] # bbox for Norwich_terrier 224*224
 
     proportion = energy_point_game2(bbox, torch.tensor(grayscale_cam))
     print("The PROPORTION after energy point game is", '%.3f' % proportion.item())
