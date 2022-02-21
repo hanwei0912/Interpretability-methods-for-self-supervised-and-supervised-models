@@ -1,4 +1,4 @@
-# This script runned for me only in cpu cause I get out of memory error!
+
 import argparse
 import cv2
 import numpy as np
@@ -19,7 +19,7 @@ from pytorch_grad_cam import GradCAM, \
 from pytorch_grad_cam import GuidedBackpropReLUModel
 from pytorch_grad_cam.utils.image import show_cam_on_image, \
     preprocess_image
-
+from eval_metric.metrics_classification import *
 
 def get_args():
     parser = argparse.ArgumentParser()
@@ -54,7 +54,7 @@ def get_args():
     return args
 
 
-def reshape_transform(tensor, height=24, width=24): # 
+def reshape_transform(tensor, height=14, width=14): 
     result = tensor[:, 1:, :].reshape(tensor.size(0),
                                       height, width, tensor.size(2))
 
@@ -86,7 +86,7 @@ if __name__ == '__main__':
     if args.method not in list(methods.keys()):
         raise Exception(f"method should be one of {list(methods.keys())}")
 
-    model = timm.create_model('cait_s24_384', pretrained=True) # loading the model
+    model = timm.create_model('cait_s24_224', pretrained=True) # loading the model
                           
     model.eval()
 
@@ -104,7 +104,7 @@ if __name__ == '__main__':
                                reshape_transform=reshape_transform)
 
     rgb_img = cv2.imread(args.image_path, 1)[:, :, ::-1]
-    rgb_img = cv2.resize(rgb_img, (384, 384)) # 
+    rgb_img = cv2.resize(rgb_img, (224, 224)) # 
     rgb_img = np.float32(rgb_img) / 255
     input_tensor = preprocess_image(rgb_img, mean=[0.5, 0.5, 0.5],
                                     std=[0.5, 0.5, 0.5])
@@ -112,7 +112,7 @@ if __name__ == '__main__':
 
     # If None, returns the map for the highest scoring category.
     # Otherwise, targets the requested category.
-    target_category = 186 # choose the category or None
+    target_category = 22 # choose the category or None
     #tiger shark = 3
     # bald eagle = 22
     # Norwich terrier = 186
@@ -130,4 +130,52 @@ if __name__ == '__main__':
     grayscale_cam = grayscale_cam[0, :]
 
     cam_image = show_cam_on_image(rgb_img, grayscale_cam)
+
+    masked_tensor = preprocess_image(cam_image,
+                                    mean=[0.485, 0.456, 0.406],
+                                    std=[0.229, 0.224, 0.225])
+    #Parameters needed for the evaluation metrics
+    klen = 11
+    ksig = 5
+    kern = gkern(klen, ksig)
+     
+    if args.use_cuda:
+        device = 'cuda'
+        input_tensor=input_tensor.cuda()
+        blur = lambda x: nn.functional.conv2d(x.to("cpu"), kern, padding=klen//2).to("cuda") # Function that blurs input image 
+    else:
+        device = 'cpu'
+        blur = lambda x: nn.functional.conv2d(x, kern, padding=klen//2) # Function that blurs input image
+    
+    # Γενικότερα για target category = None έχoυν πρόβλημα οι παρακάτω συναρτήσεις. Να το δώ
+    outputs, outputs_mask = return_probs(model, input_tensor, masked_tensor, device)
+    print("For unmasked input, the model predicted", outputs[1][0][0].item(), "class with probability", outputs[0][0][0].item())
+    print("For masked input, the model predicted", outputs_mask[1][0][0].item(), "class with probability", outputs_mask[0][0][0].item())
+    prob1, prob2 = return_probs2(model, input_tensor, torch.tensor(target_category), masked_tensor, device)
+    print("The probabilities for target class", target_category,"and for unmasked input is", prob1, ",while for masked input", prob2)
+    avg_drop, avg_inc = averageDropIncrease(model, input_tensor, torch.tensor(target_category), masked_tensor, device)
+    print("The AVERAGE DROP is", avg_drop)
+    print("Is score for masked input higher?", avg_inc)
+    
+    #Starting deletion and insertion game 
+   
+    insertion = CausalMetric(model, 'ins', 224, substrate_fn=blur)
+    deletion = CausalMetric(model, 'del', 224, substrate_fn=torch.zeros_like)
+
+    del_scores = deletion.single_run(input_tensor, cam_image, verbose=1, save_to = "plots/del224.png")
+    
+    in_scores = insertion.single_run(input_tensor, cam_image, verbose=1, save_to = "plots/ins224.png")
+    
+    del_auc = auc(del_scores) # Calculation of AUC scores
+    in_auc = auc(in_scores)
+    print("The AUC score for deletion is", '%.3f' % del_auc,"and for insertion", '%.3f' % in_auc)
+    
+    #Implementation of Energy-based Pointing Game proposed in Score-CAM
+    bbox = [32, 71, 177, 197] # bbox for bald_eagle 224*224
+    #bbox = [30, 42, 194, 172] # bbox for tiger_shark 224*224
+    #bbox = [5, 2, 217, 222] # bbox for Norwich_terrier 224*224
+
+    proportion = energy_point_game2(bbox, torch.tensor(grayscale_cam))
+    print("The PROPORTION after energy point game is", '%.3f' % proportion.item())
+
     cv2.imwrite(f'{args.method}_cam.jpg', cam_image)

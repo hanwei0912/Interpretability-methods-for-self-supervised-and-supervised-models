@@ -6,7 +6,7 @@ So any further information about the requirements of the environment and the way
 
 In this set of experiments I try to interpret the following models.
 
-Cait source --> https://github.com/facebookresearch/deit model:cait_s24_384 
+Cait source --> https://github.com/facebookresearch/deit model:cait_s24_224 
 
 Deit source --> https://github.com/facebookresearch/deit model:deit_base_patch16_224
 
@@ -31,3 +31,5 @@ Then for the moco-v3_deit_main.py, download first the linear-vit-b-300ep.pth.tar
 With the same thinking, for the moco-v3_res_main.py, download first the linear-1000ep.pth.tar from https://github.com/facebookresearch/moco-v3/blob/main/CONFIG.md and simply put the .pth file to the pretrained_weights folder.
 
 More samples for the experiments can be found https://github.com/EliSchwartz/imagenet-sample-images
+
+Each model script contains the quantitative evaluation of the activation map. If one wants only the qualitative results, he must comment some code lines!
